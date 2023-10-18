@@ -259,22 +259,40 @@
         ];
 
         # Additional tools that weren't included as `nativeBuildInputs` of any of the derivations in `inputsFrom`
-        nativeBuildInputs = with pkgs; [
-          # Rust toolchain
-          rustToolchain
-          # Other tools
-          starship
-          yarn
-          nodejs-18_x
-          # Used by the `bb` binary
-          curl
-          gzip
-          # This ensures the right lldb is in the environment for running rust-lldb
-          llvmPackages.lldb
-          # Nix tools
-          nil
-          nixpkgs-fmt
-        ];
+        nativeBuildInputs =
+          let
+            libPath = pkgs.lib.makeLibraryPath [
+              pkgs.stdenv.cc.libc # libm.so.6 libpthread.so.0 libc.so.6
+              pkgs.stdenv.cc.cc.lib # libgcc_s.so.1 libstdc++.so.6
+            ];
+
+            patch-nargo-backend = pkgs.writeShellScriptBin "patch-nargo-backend" ''
+              set -x
+              for backend_path in $HOME/.nargo/backends/*/backend_binary; do
+                patchelf \
+                  --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
+                  --set-rpath "${libPath}" \
+                  "$backend_path"
+              done
+            '';
+          in
+          with pkgs; [
+            # Rust toolchain
+            rustToolchain
+            # Other tools
+            starship
+            yarn
+            nodejs-18_x
+            # Used by the `bb` binary
+            curl
+            gzip
+            # This ensures the right lldb is in the environment for running rust-lldb
+            llvmPackages.lldb
+            # Nix tools
+            nil
+            nixpkgs-fmt
+            patch-nargo-backend
+          ];
 
         shellHook = ''
           eval "$(starship init bash)"
