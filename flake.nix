@@ -34,10 +34,15 @@
     };
   };
 
-  outputs =
-    { self, nixpkgs, crane, flake-utils, fenix, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-    let
+  outputs = {
+    self,
+    nixpkgs,
+    crane,
+    flake-utils,
+    fenix,
+    ...
+  }:
+    flake-utils.lib.eachDefaultSystem (system: let
       pkgs = import nixpkgs {
         inherit system;
       };
@@ -50,14 +55,22 @@
       craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
 
       # The `self.rev` property is only available when the working tree is not dirty
-      GIT_COMMIT = if (self ? rev) then self.rev else "unknown";
-      GIT_DIRTY = if (self ? rev) then "false" else "true";
+      GIT_COMMIT =
+        if (self ? rev)
+        then self.rev
+        else "unknown";
+      GIT_DIRTY =
+        if (self ? rev)
+        then "false"
+        else "true";
 
-      extraBuildInputs = [ ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-        # Need libiconv and apple Security on Darwin. See https://github.com/ipetkov/crane/issues/156
-        pkgs.libiconv
-        pkgs.darwin.apple_sdk.frameworks.Security
-      ];
+      extraBuildInputs =
+        []
+        ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+          # Need libiconv and apple Security on Darwin. See https://github.com/ipetkov/crane/issues/156
+          pkgs.libiconv
+          pkgs.darwin.apple_sdk.frameworks.Security
+        ];
 
       environment = {
         # We enable backtraces on any failure for help with debugging
@@ -92,113 +105,127 @@
       };
 
       # Combine the environment and other configuration needed for Crane to build our Rust packages
-      nativeConfig = environment // config // {
-        nativeBuildInputs = [ ];
+      nativeConfig =
+        environment
+        // config
+        // {
+          nativeBuildInputs = [];
 
-        buildInputs = [ ] ++ extraBuildInputs;
-      };
+          buildInputs = [] ++ extraBuildInputs;
+        };
 
       # Combine the environmnet and other configuration needed for Crane to build our Wasm packages
-      wasmConfig = environment // config // {
-        CARGO_TARGET_DIR = "./target";
+      wasmConfig =
+        environment
+        // config
+        // {
+          CARGO_TARGET_DIR = "./target";
 
-        nativeBuildInputs = with pkgs; [
-          which
-          git
-          jq
-          rustToolchain
-          wasm-bindgen-cli
-          binaryen
-        ];
+          nativeBuildInputs = with pkgs; [
+            which
+            git
+            jq
+            rustToolchain
+            wasm-bindgen-cli
+            binaryen
+          ];
 
-        buildInputs = [ ] ++ extraBuildInputs;
-      };
+          buildInputs = [] ++ extraBuildInputs;
+        };
 
       # Build *just* the cargo dependencies, so we can reuse all of that work between runs
-      native-cargo-artifacts = craneLib.buildDepsOnly (nativeConfig // {
-        pname = "nargo";
-      });
-      noir-wasm-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig // {
-        pname = "noir_wasm";
-      });
-      noirc-abi-wasm-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig // {
-        pname = "noirc_abi_wasm";
-      });
-      acvm-js-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig // {
-        pname = "acvm_js";
-      });
+      native-cargo-artifacts = craneLib.buildDepsOnly (nativeConfig
+        // {
+          pname = "nargo";
+        });
+      noir-wasm-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig
+        // {
+          pname = "noir_wasm";
+        });
+      noirc-abi-wasm-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig
+        // {
+          pname = "noirc_abi_wasm";
+        });
+      acvm-js-cargo-artifacts = craneLib.buildDepsOnly (wasmConfig
+        // {
+          pname = "acvm_js";
+        });
 
-      nargo = craneLib.buildPackage (nativeConfig // {
-        pname = "nargo";
+      nargo = craneLib.buildPackage (nativeConfig
+        // {
+          pname = "nargo";
 
-        inherit GIT_COMMIT GIT_DIRTY;
+          inherit GIT_COMMIT GIT_DIRTY;
 
-        cargoArtifacts = native-cargo-artifacts;
+          cargoArtifacts = native-cargo-artifacts;
 
-        # We don't want to run tests because they don't work in the Nix sandbox
-        doCheck = false;
-      });
+          # We don't want to run tests because they don't work in the Nix sandbox
+          doCheck = false;
+        });
 
-      noir_wasm = craneLib.buildPackage (wasmConfig // {
-        pname = "noir_wasm";
+      noir_wasm = craneLib.buildPackage (wasmConfig
+        // {
+          pname = "noir_wasm";
 
-        inherit GIT_COMMIT GIT_DIRTY;
+          inherit GIT_COMMIT GIT_DIRTY;
 
-        cargoArtifacts = noir-wasm-cargo-artifacts;
+          cargoArtifacts = noir-wasm-cargo-artifacts;
 
-        buildPhaseCargoCommand = ''
-          bash compiler/wasm/buildPhaseCargoCommand.sh release
-        '';
+          buildPhaseCargoCommand = ''
+            bash compiler/wasm/buildPhaseCargoCommand.sh release
+          '';
 
-        installPhase = ''
-          bash compiler/wasm/installPhase.sh
-        '';
+          installPhase = ''
+            bash compiler/wasm/installPhase.sh
+          '';
 
-        # We don't want to run tests because they don't work in the Nix sandbox
-        doCheck = false;
-      });
+          # We don't want to run tests because they don't work in the Nix sandbox
+          doCheck = false;
+        });
 
-      noirc_abi_wasm = craneLib.buildPackage (wasmConfig // rec {
-        pname = "noirc_abi_wasm";
+      noirc_abi_wasm = craneLib.buildPackage (wasmConfig
+        // rec {
+          pname = "noirc_abi_wasm";
 
-        inherit GIT_COMMIT GIT_DIRTY;
+          inherit GIT_COMMIT GIT_DIRTY;
 
-        cargoArtifacts = noirc-abi-wasm-cargo-artifacts;
+          cargoArtifacts = noirc-abi-wasm-cargo-artifacts;
 
-        cargoExtraArgs = "--package ${pname} --target wasm32-unknown-unknown";
+          cargoExtraArgs = "--package ${pname} --target wasm32-unknown-unknown";
 
-        buildPhaseCargoCommand = ''
-          bash tooling/noirc_abi_wasm/buildPhaseCargoCommand.sh release
-        '';
+          buildPhaseCargoCommand = ''
+            bash tooling/noirc_abi_wasm/buildPhaseCargoCommand.sh release
+          '';
 
-        installPhase = ''
-          bash tooling/noirc_abi_wasm/installPhase.sh
-        '';
+          installPhase = ''
+            bash tooling/noirc_abi_wasm/installPhase.sh
+          '';
 
-        # We don't want to run tests because they don't work in the Nix sandbox
-        doCheck = false;
-      });
+          # We don't want to run tests because they don't work in the Nix sandbox
+          doCheck = false;
+        });
 
-      acvm_js = craneLib.buildPackage (wasmConfig // rec {
-        pname = "acvm_js";
+      acvm_js = craneLib.buildPackage (wasmConfig
+        // rec {
+          pname = "acvm_js";
 
-        inherit GIT_COMMIT GIT_DIRTY;
+          inherit GIT_COMMIT GIT_DIRTY;
 
-        cargoArtifacts = acvm-js-cargo-artifacts;
+          cargoArtifacts = acvm-js-cargo-artifacts;
 
-        cargoExtraArgs = "--package ${pname} --target wasm32-unknown-unknown";
+          cargoExtraArgs = "--package ${pname} --target wasm32-unknown-unknown";
 
-        buildPhaseCargoCommand = ''
-          bash acvm-repo/acvm_js/buildPhaseCargoCommand.sh release
-        '';
+          buildPhaseCargoCommand = ''
+            bash acvm-repo/acvm_js/buildPhaseCargoCommand.sh release
+          '';
 
-        installPhase = ''
-          bash acvm-repo/acvm_js/installPhase.sh
-        '';
+          installPhase = ''
+            bash acvm-repo/acvm_js/installPhase.sh
+          '';
 
-        # We don't want to run tests because they don't work in the Nix sandbox
-        doCheck = false;
-      });
+          # We don't want to run tests because they don't work in the Nix sandbox
+          doCheck = false;
+        });
 
       wasm-bindgen-cli = pkgs.callPackage ./wasm-bindgen-cli.nix {
         rustPlatform = pkgs.makeRustPlatform {
@@ -206,25 +233,26 @@
           cargo = rustToolchain;
         };
       };
-    in
-    {
+    in {
       # We use `checks` to run `cargo clippy` and `cargo fmt` since we disable checks in the primary derivations
       checks = {
-        cargo-clippy = craneLib.cargoClippy (nativeConfig // {
-          pname = "noir";
+        cargo-clippy = craneLib.cargoClippy (nativeConfig
+          // {
+            pname = "noir";
 
-          inherit GIT_COMMIT GIT_DIRTY;
+            inherit GIT_COMMIT GIT_DIRTY;
 
-          cargoArtifacts = native-cargo-artifacts;
-        });
+            cargoArtifacts = native-cargo-artifacts;
+          });
 
-        cargo-fmt = craneLib.cargoFmt (nativeConfig // {
-          pname = "noir";
+        cargo-fmt = craneLib.cargoFmt (nativeConfig
+          // {
+            pname = "noir";
 
-          inherit GIT_COMMIT GIT_DIRTY;
+            inherit GIT_COMMIT GIT_DIRTY;
 
-          cargoArtifacts = native-cargo-artifacts;
-        });
+            cargoArtifacts = native-cargo-artifacts;
+          });
       };
 
       packages = {
@@ -232,8 +260,14 @@
 
         # Nix flakes cannot build more than one derivation in one command (see https://github.com/NixOS/nix/issues/5591)
         # so we use `symlinkJoin` to build everything as the "all" package.
-        all = pkgs.symlinkJoin { name = "all"; paths = [ nargo noir_wasm noirc_abi_wasm acvm_js ]; };
-        all_wasm = pkgs.symlinkJoin { name = "all_wasm"; paths = [ noir_wasm noirc_abi_wasm acvm_js ]; };
+        all = pkgs.symlinkJoin {
+          name = "all";
+          paths = [nargo noir_wasm noirc_abi_wasm acvm_js];
+        };
+        all_wasm = pkgs.symlinkJoin {
+          name = "all_wasm";
+          paths = [noir_wasm noirc_abi_wasm acvm_js];
+        };
 
         # We also export individual packages to enable `nix build .#nargo -L`, etc.
         inherit nargo;
@@ -250,54 +284,65 @@
 
       # Setup the environment to match the environment settings, the inputs from our checks derivations,
       # and extra tooling via `nativeBuildInputs`
-      devShells.default = pkgs.mkShell (environment // {
-        inputsFrom = [
-          nargo
-          noir_wasm
-          noirc_abi_wasm
-          acvm_js
+      devShells.default = let
+        libPath = pkgs.lib.makeLibraryPath [
+          pkgs.stdenv.cc.libc # libm.so.6 libpthread.so.0 libc.so.6
+          pkgs.stdenv.cc.cc.lib # libgcc_s.so.1 libstdc++.so.6
         ];
 
-        # Additional tools that weren't included as `nativeBuildInputs` of any of the derivations in `inputsFrom`
-        nativeBuildInputs =
-          let
-            libPath = pkgs.lib.makeLibraryPath [
-              pkgs.stdenv.cc.libc # libm.so.6 libpthread.so.0 libc.so.6
-              pkgs.stdenv.cc.cc.lib # libgcc_s.so.1 libstdc++.so.6
+        patch-nargo = pkgs.writeShellScriptBin "patch-nargo" ''
+          set -x
+
+          for backend_path in $HOME/.nargo/backends/*/backend_binary; do
+            patchelf \
+              --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
+              --set-rpath "${libPath}" \
+              "$backend_path"
+          done
+        '';
+
+        init-patch-nargo = pkgs.writeShellScriptBin "init-patch-nargo" ''
+          set -x
+
+          cd $PWD/tooling/nargo_cli/tests/execution_success/1_mul/
+
+          nargo execute
+
+          ${patch-nargo}/bin/patch-nargo
+        '';
+      in
+        pkgs.mkShell (environment
+          // {
+            inputsFrom = [
+              nargo
+              noir_wasm
+              noirc_abi_wasm
+              acvm_js
             ];
 
-            patch-nargo-backend = pkgs.writeShellScriptBin "patch-nargo-backend" ''
-              set -x
-              for backend_path in $HOME/.nargo/backends/*/backend_binary; do
-                patchelf \
-                  --set-interpreter "$(cat $NIX_CC/nix-support/dynamic-linker)" \
-                  --set-rpath "${libPath}" \
-                  "$backend_path"
-              done
-            '';
-          in
-          with pkgs; [
-            # Rust toolchain
-            rustToolchain
-            # Other tools
-            starship
-            yarn
-            nodejs-18_x
-            # Used by the `bb` binary
-            curl
-            gzip
-            # This ensures the right lldb is in the environment for running rust-lldb
-            llvmPackages.lldb
-            # Nix tools
-            nil
-            nixpkgs-fmt
-            patch-nargo-backend
-          ];
+            # Additional tools that weren't included as `nativeBuildInputs` of any of the derivations in `inputsFrom`
+            nativeBuildInputs = with pkgs; [
+              # Rust toolchain
+              rustToolchain
+              # Other tools
+              starship
+              yarn
+              nodejs-18_x
+              # Used by the `bb` binary
+              curl
+              gzip
+              # This ensures the right lldb is in the environment for running rust-lldb
+              llvmPackages.lldb
+              # Nix tools
+              nil
+              nixpkgs-fmt
+              patch-nargo
+            ];
 
-        shellHook = ''
-          eval "$(starship init bash)"
-        '';
-      });
+            shellHook = ''
+              eval "$(starship init bash)"
+              ${init-patch-nargo}/bin/init-patch-nargo
+            '';
+          });
     });
 }
-
